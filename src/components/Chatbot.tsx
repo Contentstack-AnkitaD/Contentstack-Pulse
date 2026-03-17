@@ -45,7 +45,7 @@ const Chatbot: React.FC = () => {
           {/* Header */}
           <div className="px-4 py-3 bg-pulse-primary text-white">
             <h3 className="text-sm font-semibold">Pulse Assistant</h3>
-            <span className="text-[11px] opacity-80">NLP-powered stack operations</span>
+            <span className="text-[11px] opacity-80">Your stack command center</span>
           </div>
 
           {/* Messages */}

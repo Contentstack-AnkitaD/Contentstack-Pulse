@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useAppConfig } from "./useAppConfig";
 import { EntryHealth, GeminiInsight, ChatMessage } from "../types";
 
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
 async function callGemini(apiKey: string, prompt: string): Promise<string> {
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
@@ -12,7 +12,7 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 4096,
       },
     }),
   });
@@ -24,6 +24,16 @@ async function callGemini(apiKey: string, prompt: string): Promise<string> {
 
   const data = await response.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response from Gemini.";
+}
+
+function parseGeminiJson(raw: string): any {
+  let clean = raw.trim();
+  // Strip markdown code fences
+  clean = clean.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  // Extract first JSON object if there's surrounding text
+  const jsonMatch = clean.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("No JSON found in Gemini response");
+  return JSON.parse(jsonMatch[0]);
 }
 
 export const useGeminiInsights = () => {
@@ -53,25 +63,14 @@ export const useGeminiInsights = () => {
           lastUpdated: e.lastUpdated,
         }));
 
-        const prompt = `You are a content quality analyst for a CMS platform called Contentstack.
-Given these content entries with their health issues, provide a JSON response with:
-1. "summary": A plain English paragraph summarizing the top 3 health problems in this stack
-2. "priorities": An array of 3 strings listing issues in priority order for fixing
-3. "recommendations": An array of 3 strings with one-line fix recommendation per issue type
+        const prompt = `You are a content quality analyst for Contentstack CMS.
+Analyze these flagged entries and return ONLY a valid JSON object (no markdown, no code blocks, no extra text):
+{"summary":"2-3 sentence summary of top problems","priorities":["priority1","priority2","priority3"],"recommendations":["fix1","fix2","fix3"]}
 
-Respond ONLY with valid JSON, no markdown code blocks.
-
-Entries: ${JSON.stringify(sample)}`;
+Keep each string under 100 characters. Entries: ${JSON.stringify(sample)}`;
 
         const rawResponse = await callGemini(apiKey, prompt);
-
-        // Parse JSON from response (handle possible markdown wrapping)
-        let cleanJson = rawResponse.trim();
-        if (cleanJson.startsWith("```")) {
-          cleanJson = cleanJson.replace(/```json?\n?/g, "").replace(/```$/g, "").trim();
-        }
-
-        const parsed: GeminiInsight = JSON.parse(cleanJson);
+        const parsed: GeminiInsight = parseGeminiJson(rawResponse);
         setInsights(parsed);
       } catch (err: any) {
         setError(err.message || "Failed to generate insights");
@@ -92,7 +91,7 @@ export const useGeminiChat = () => {
     {
       id: "welcome",
       role: "assistant",
-      content: 'Hi! I\'m your Contentstack assistant. Ask me things like:\n- "Export all Blog entries"\n- "Show me all content types"\n- "Publish all entries in Pages"',
+      content: "Hi! I'm your Contentstack stack operations assistant. Try things like:\n- Export all entries or assets\n- Merge main branch entries into preview\n- Publish all Pages entries",
       timestamp: Date.now(),
     },
   ]);
@@ -149,13 +148,7 @@ Supported commands:
 User request: ${userMessage}`;
 
         const rawResponse = await callGemini(apiKey, prompt);
-
-        let cleanJson = rawResponse.trim();
-        if (cleanJson.startsWith("```")) {
-          cleanJson = cleanJson.replace(/```json?\n?/g, "").replace(/```$/g, "").trim();
-        }
-
-        const parsed = JSON.parse(cleanJson);
+        const parsed = parseGeminiJson(rawResponse);
 
         let content = parsed.explanation;
         if (parsed.command) {
