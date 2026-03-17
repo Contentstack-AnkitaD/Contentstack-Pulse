@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useAppSdk } from "./useAppSdk";
+import { cmaFetch } from "./useCmaApi";
 import {
   ContentTypeInfo,
   EntryHealth,
@@ -91,28 +91,23 @@ function calculateScore(issues: HealthIssue[]): number {
 }
 
 export const useHealthAudit = () => {
-  const [appSdk] = useAppSdk();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, phase: "" });
   const [stackHealth, setStackHealth] = useState<StackHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const runAudit = useCallback(async () => {
-    if (!appSdk) return;
-
     setLoading(true);
     setError(null);
     setProgress({ current: 0, total: 0, phase: "Fetching content types..." });
 
     try {
-      const stack = appSdk.stack;
+      // 1. Fetch all content types via direct CMA
+      const ctData = await cmaFetch<{ content_types: any[] }>("/content_types", {
+        include_count: "true",
+      });
 
-      // 1. Fetch all content types using SDK's built-in method
-      // stack.getContentTypes() -> Promise<{ content_types: [...] }>
-      const ctResult: any = await stack.getContentTypes();
-      const rawContentTypes = ctResult.content_types || [];
-
-      const contentTypes: ContentTypeInfo[] = rawContentTypes.map((ct: any) => ({
+      const contentTypes: ContentTypeInfo[] = (ctData.content_types || []).map((ct: any) => ({
         uid: ct.uid,
         title: ct.title,
         schema: ct.schema || [],
@@ -125,32 +120,26 @@ export const useHealthAudit = () => {
       let criticalCount = 0;
       let warningCount = 0;
 
-      // 2. For each content type, fetch entries and audit
+      // 2. For each content type, fetch all entries with pagination
       for (let i = 0; i < contentTypes.length; i++) {
         const ct = contentTypes[i];
         setProgress({ current: i + 1, total: contentTypes.length, phase: `Auditing ${ct.title}...` });
 
         try {
-          // Paginate through all entries using SDK Query
-          // Pattern: stack.ContentType('uid').Entry.Query().limit(n).skip(n).find()
           let entries: any[] = [];
           let skip = 0;
           const limit = 100;
 
           while (true) {
-            const entryResult: any = await stack
-              .ContentType(ct.uid)
-              .Entry
-              .Query()
-              .limit(limit)
-              .skip(skip)
-              .find();
+            const entryData = await cmaFetch<{ entries: any[] }>(
+              `/content_types/${ct.uid}/entries`,
+              { include_count: "true", limit: String(limit), skip: String(skip) }
+            );
 
-            const batch = entryResult.entries || entryResult.entry || [];
-            const batchArray = Array.isArray(batch) ? batch : [batch];
-            entries = entries.concat(batchArray);
+            const batch = entryData.entries || [];
+            entries = entries.concat(batch);
 
-            if (batchArray.length < limit) break;
+            if (batch.length < limit) break;
             skip += limit;
           }
 
@@ -208,7 +197,7 @@ export const useHealthAudit = () => {
     } finally {
       setLoading(false);
     }
-  }, [appSdk]);
+  }, []);
 
   return { runAudit, loading, progress, stackHealth, error, setStackHealth };
 };

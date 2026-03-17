@@ -5,11 +5,14 @@ const Chatbot: React.FC = () => {
   const { messages, sendMessage, loading } = useGeminiChat();
   const [input, setInput] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages, loading]);
 
   const handleSend = () => {
     const trimmed = input.trim();
@@ -46,7 +49,7 @@ const Chatbot: React.FC = () => {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -91,7 +94,6 @@ const Chatbot: React.FC = () => {
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Input */}
