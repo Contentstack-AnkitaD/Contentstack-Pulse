@@ -7,9 +7,12 @@ interface Props {
 }
 
 const HealthScoreCard: React.FC<Props> = ({ stackHealth }) => {
-  const { averageScore, totalEntries, totalIssues, criticalCount, warningCount } = stackHealth;
+  const { averageScore, totalEntries, totalIssues, criticalCount, warningCount, contentTypeHealth } = stackHealth;
   const color = getScoreColor(averageScore);
   const label = getScoreLabel(averageScore);
+
+  const emptyCTs = contentTypeHealth.filter((ct) => ct.entryCount === 0).length;
+  const ctWithIssues = contentTypeHealth.filter((ct) => ct.issues.length > 0).length;
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
@@ -36,14 +39,25 @@ const HealthScoreCard: React.FC<Props> = ({ stackHealth }) => {
         </div>
       </div>
 
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-4 mb-4">
+        <Stat value={contentTypeHealth.length.toString()} label="content types" />
+        <Divider />
         <Stat value={totalEntries.toLocaleString()} label="entries" />
         <Divider />
-        <Stat value={totalIssues.toLocaleString()} label="issues found" />
+        <Stat value={totalIssues.toLocaleString()} label="issues" />
         <Divider />
         <Stat value={criticalCount.toString()} label="critical" className="text-red-500" />
         <Divider />
         <Stat value={warningCount.toString()} label="warnings" className="text-yellow-500" />
+      </div>
+
+      <div className="flex gap-2 pt-3 border-t border-gray-100">
+        <span className="px-2 py-1 bg-orange-50 text-orange-600 rounded text-[11px] font-semibold">
+          {emptyCTs} empty content types
+        </span>
+        <span className="px-2 py-1 bg-red-50 text-red-500 rounded text-[11px] font-semibold">
+          {ctWithIssues} content types with issues
+        </span>
       </div>
     </div>
   );

@@ -20,6 +20,7 @@ const EntryTable: React.FC<Props> = ({ entries, onMarkReviewed }) => {
   const [filter, setFilter] = useState<FilterType>("all");
   const [contentTypeFilter, setContentTypeFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedUid, setExpandedUid] = useState<string | null>(null);
 
   const contentTypes = useMemo(() => {
     const types = new Set(entries.map((e) => e.contentType));
@@ -73,9 +74,9 @@ const EntryTable: React.FC<Props> = ({ entries, onMarkReviewed }) => {
         </select>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
         <table className="w-full text-sm">
-          <thead>
+          <thead className="sticky top-0 bg-white z-10">
             <tr className="border-b-2 border-gray-200">
               <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Entry Title
@@ -84,7 +85,7 @@ const EntryTable: React.FC<Props> = ({ entries, onMarkReviewed }) => {
                 Content Type
               </th>
               <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Health Score
+                Score
               </th>
               <th className="text-left py-2.5 px-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Issues
@@ -106,60 +107,117 @@ const EntryTable: React.FC<Props> = ({ entries, onMarkReviewed }) => {
               </tr>
             ) : (
               filteredEntries.map((entry) => (
-                <tr
-                  key={entry.uid}
-                  className={`border-b border-gray-100 hover:bg-gray-50 ${
-                    entry.reviewed ? "bg-green-50" : ""
-                  }`}
-                >
-                  <td className="py-2.5 px-3 font-medium max-w-[250px] truncate">{entry.title}</td>
-                  <td className="py-2.5 px-3">
-                    <span className="px-2 py-0.5 bg-purple-50 text-pulse-primary rounded-full text-xs font-semibold">
-                      {entry.contentType}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span className="font-bold text-sm" style={{ color: getScoreColor(entry.score) }}>
-                      {entry.score}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <div className="flex gap-1.5 flex-wrap">
-                      {entry.issues.filter((i) => i.severity === Severity.CRITICAL).length > 0 && (
-                        <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded-full text-[11px] font-semibold">
-                          {entry.issues.filter((i) => i.severity === Severity.CRITICAL).length} critical
-                        </span>
-                      )}
-                      {entry.issues.filter((i) => i.severity === Severity.WARNING).length > 0 && (
-                        <span className="px-2 py-0.5 bg-yellow-50 text-yellow-600 rounded-full text-[11px] font-semibold">
-                          {entry.issues.filter((i) => i.severity === Severity.WARNING).length} warning
-                        </span>
-                      )}
-                      {entry.issues.length === 0 && (
-                        <span className="px-2 py-0.5 bg-green-50 text-green-600 rounded-full text-[11px] font-semibold">
-                          No issues
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-3 text-gray-500 whitespace-nowrap">
-                    {timeAgo(entry.lastUpdated)}
-                  </td>
-                  <td className="py-2.5 px-3">
-                    {entry.reviewed ? (
-                      <span className="px-2 py-0.5 bg-green-50 text-green-600 rounded-full text-[11px] font-semibold">
-                        Reviewed
+                <React.Fragment key={entry.uid}>
+                  <tr
+                    className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${
+                      entry.reviewed ? "bg-green-50" : ""
+                    } ${expandedUid === entry.uid ? "bg-purple-50" : ""}`}
+                    onClick={() => setExpandedUid(expandedUid === entry.uid ? null : entry.uid)}
+                  >
+                    <td className="py-2.5 px-3 font-medium max-w-[250px] truncate">
+                      <span className="mr-1.5 text-gray-400 text-[10px]">
+                        {expandedUid === entry.uid ? "▼" : "▶"}
                       </span>
-                    ) : (
-                      <button
-                        className="px-2.5 py-1 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                        onClick={() => onMarkReviewed(entry.uid)}
-                      >
-                        Mark Reviewed
-                      </button>
-                    )}
-                  </td>
-                </tr>
+                      {entry.title}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="px-2 py-0.5 bg-purple-50 text-pulse-primary rounded-full text-xs font-semibold">
+                        {entry.contentType}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="font-bold text-sm" style={{ color: getScoreColor(entry.score) }}>
+                        {entry.score}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex gap-1.5 flex-wrap">
+                        {entry.issues.filter((i) => i.severity === Severity.CRITICAL).length > 0 && (
+                          <span className="px-2 py-0.5 bg-red-50 text-red-500 rounded-full text-[11px] font-semibold">
+                            {entry.issues.filter((i) => i.severity === Severity.CRITICAL).length} critical
+                          </span>
+                        )}
+                        {entry.issues.filter((i) => i.severity === Severity.WARNING).length > 0 && (
+                          <span className="px-2 py-0.5 bg-yellow-50 text-yellow-600 rounded-full text-[11px] font-semibold">
+                            {entry.issues.filter((i) => i.severity === Severity.WARNING).length} warning
+                          </span>
+                        )}
+                        {entry.issues.length === 0 && (
+                          <span className="px-2 py-0.5 bg-green-50 text-green-600 rounded-full text-[11px] font-semibold">
+                            No issues
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-3 text-gray-500 whitespace-nowrap">
+                      {timeAgo(entry.lastUpdated)}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      {entry.reviewed ? (
+                        <span className="px-2 py-0.5 bg-green-50 text-green-600 rounded-full text-[11px] font-semibold">
+                          Reviewed
+                        </span>
+                      ) : (
+                        <button
+                          className="px-2.5 py-1 text-xs border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMarkReviewed(entry.uid);
+                          }}
+                        >
+                          Mark Reviewed
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+
+                  {/* Expanded issue details */}
+                  {expandedUid === entry.uid && entry.issues.length > 0 && (
+                    <tr>
+                      <td colSpan={6} className="bg-gray-50 px-6 py-3 border-b border-gray-200">
+                        <div className="flex flex-col gap-2">
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                            Issue Details
+                          </span>
+                          {entry.issues.map((issue, idx) => (
+                            <div
+                              key={idx}
+                              className={`flex items-start gap-2 px-3 py-2 rounded-lg text-sm ${
+                                issue.severity === Severity.CRITICAL
+                                  ? "bg-red-50 border border-red-100"
+                                  : "bg-yellow-50 border border-yellow-100"
+                              }`}
+                            >
+                              <span
+                                className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                                  issue.severity === Severity.CRITICAL ? "bg-red-500" : "bg-yellow-500"
+                                }`}
+                              />
+                              <div className="flex-1">
+                                <span
+                                  className={`text-xs font-semibold uppercase mr-2 ${
+                                    issue.severity === Severity.CRITICAL ? "text-red-500" : "text-yellow-600"
+                                  }`}
+                                >
+                                  {issue.severity}
+                                </span>
+                                <span className="text-gray-700">{issue.message}</span>
+                                {issue.field && (
+                                  <span className="ml-2 px-1.5 py-0.5 bg-white rounded text-[10px] text-gray-500 font-mono">
+                                    {issue.field}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-gray-400 bg-white px-1.5 py-0.5 rounded whitespace-nowrap">
+                                {issue.type.replace(/_/g, " ")}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))
             )}
           </tbody>

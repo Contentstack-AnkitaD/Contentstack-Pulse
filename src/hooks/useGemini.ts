@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useAppConfig } from "./useAppConfig";
-import { EntryHealth, GeminiInsight, ChatMessage } from "../types";
+import { ContentTypeHealth, EntryHealth, GeminiInsight, ChatMessage } from "../types";
 
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
@@ -43,7 +43,7 @@ export const useGeminiInsights = () => {
   const [error, setError] = useState<string | null>(null);
 
   const generateInsights = useCallback(
-    async (flaggedEntries: EntryHealth[]) => {
+    async (flaggedEntries: EntryHealth[], flaggedCTs?: ContentTypeHealth[]) => {
       const apiKey = config.gemini_api_key || import.meta.env.REACT_APP_GEMINI_API_KEY;
       if (!apiKey) {
         setError("Gemini API key not configured. Go to App Configuration to set it.");
@@ -55,7 +55,7 @@ export const useGeminiInsights = () => {
 
       try {
         // Send top 20 worst entries for analysis
-        const sample = flaggedEntries.slice(0, 20).map((e) => ({
+        const entrySample = flaggedEntries.slice(0, 20).map((e) => ({
           title: e.title,
           contentType: e.contentType,
           score: e.score,
@@ -63,11 +63,22 @@ export const useGeminiInsights = () => {
           lastUpdated: e.lastUpdated,
         }));
 
-        const prompt = `You are a content quality analyst for Contentstack CMS.
-Analyze these flagged entries and return ONLY a valid JSON object (no markdown, no code blocks, no extra text):
-{"summary":"2-3 sentence summary of top problems","priorities":["priority1","priority2","priority3"],"recommendations":["fix1","fix2","fix3"]}
+        // Send top 30 worst CTs
+        const ctSample = (flaggedCTs || []).slice(0, 30).map((ct) => ({
+          title: ct.title,
+          uid: ct.uid,
+          entryCount: ct.entryCount,
+          score: ct.score,
+          issues: ct.issues.map((i) => ({ type: i.type, message: i.message, severity: i.severity })),
+        }));
 
-Keep each string under 100 characters. Entries: ${JSON.stringify(sample)}`;
+        const prompt = `You are a content quality analyst for Contentstack CMS.
+Given these content type schema issues and entry-level health issues, return ONLY a valid JSON object (no markdown, no code blocks):
+{"summary":"2-3 sentence summary of top problems including empty content types, missing global fields, schema and entry issues","priorities":["priority1","priority2","priority3","priority4","priority5"],"recommendations":["fix1","fix2","fix3","fix4","fix5"]}
+
+Keep each string under 100 characters.
+Content Type Issues: ${JSON.stringify(ctSample)}
+Entry Issues: ${JSON.stringify(entrySample)}`;
 
         const rawResponse = await callGemini(apiKey, prompt);
         const parsed: GeminiInsight = parseGeminiJson(rawResponse);
