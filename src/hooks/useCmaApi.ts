@@ -1,6 +1,6 @@
-const BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://eu-api.contentstack.com";
-const API_KEY = process.env.REACT_APP_API_KEY || "";
-const MANAGEMENT_TOKEN = process.env.REACT_APP_MANAGEMENT_TOKEN || "";
+const BASE_URL = import.meta.env.REACT_APP_API_BASE_URL || "https://eu-api.contentstack.com";
+const API_KEY = import.meta.env.REACT_APP_API_KEY || "";
+const MANAGEMENT_TOKEN = import.meta.env.REACT_APP_MANAGEMENT_TOKEN || "";
 
 export async function cmaFetch<T = any>(
   endpoint: string,

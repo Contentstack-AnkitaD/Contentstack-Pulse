@@ -2,14 +2,15 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig(({ mode }) => {
-  const envPairs = Object.entries(process.env);
-  const reactAppEnvObject = envPairs.reduce<Record<string, string>>((acc, [key, value]) => {
+  // Build individual define entries for each REACT_APP_* env var
+  const defines: Record<string, string> = {
+    "process.env.NODE_ENV": JSON.stringify(mode),
+  };
+  for (const [key, value] of Object.entries(process.env)) {
     if (key.startsWith("REACT_APP_") || key.startsWith("VITE_")) {
-      acc[key] = String(value ?? "");
+      defines[`process.env.${key}`] = JSON.stringify(value ?? "");
     }
-    return acc;
-  }, {});
-  reactAppEnvObject.NODE_ENV = mode;
+  }
 
   return {
     plugins: [react()],
@@ -18,9 +19,8 @@ export default defineConfig(({ mode }) => {
         buffer: "buffer",
       },
     },
-    define: {
-      "process.env": JSON.stringify(reactAppEnvObject),
-    },
+    define: defines,
+    envPrefix: ["VITE_", "REACT_APP_"],
     optimizeDeps: {
       include: ["buffer"],
     },

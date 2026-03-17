@@ -34,7 +34,7 @@ export const useGeminiInsights = () => {
 
   const generateInsights = useCallback(
     async (flaggedEntries: EntryHealth[]) => {
-      const apiKey = config.gemini_api_key || process.env.REACT_APP_GEMINI_API_KEY;
+      const apiKey = config.gemini_api_key || import.meta.env.REACT_APP_GEMINI_API_KEY;
       if (!apiKey) {
         setError("Gemini API key not configured. Go to App Configuration to set it.");
         return;
@@ -100,7 +100,7 @@ export const useGeminiChat = () => {
 
   const sendMessage = useCallback(
     async (userMessage: string) => {
-      const apiKey = config.gemini_api_key || process.env.REACT_APP_GEMINI_API_KEY;
+      const apiKey = config.gemini_api_key || import.meta.env.REACT_APP_GEMINI_API_KEY;
       if (!apiKey) {
         setMessages((prev) => [
           ...prev,

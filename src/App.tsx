@@ -24,6 +24,7 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  console.log("[Pulse] App component rendering");
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>

@@ -7,6 +7,7 @@ import EntryTable from "../components/EntryTable";
 import Chatbot from "../components/Chatbot";
 
 const FullPageApp: React.FC = () => {
+  console.log("[Pulse] FullPageApp component rendering");
   const { runAudit, loading, progress, stackHealth, error, setStackHealth } = useHealthAudit();
   const {
     generateInsights,

@@ -13,8 +13,9 @@ export class ErrorBoundary extends React.Component<
     return { hasError: true };
   }
 
-  componentDidCatch(error: Error) {
-    console.error("[Pulse] Error:", error);
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("[Pulse] ErrorBoundary caught:", error);
+    console.error("[Pulse] Component stack:", errorInfo.componentStack);
   }
 
   render() {
