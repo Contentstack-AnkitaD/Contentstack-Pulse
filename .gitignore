@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Build and output
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+
+# Logs and runtime
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE and editors
+.idea/
+*.swp
+*.swo
+*~
+
+# Optional local config
+.vscode/
+# .claude/settings.local.json
+
+# Contentstack / CLI
+.csdx/
+*.export.zip
+
+# Misc
+*.tgz
+.coverage
+htmlcov/
+.nyc_output/

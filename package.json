@@ -1,0 +1,37 @@
+{
+  "name": "contentstack-pulse",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@contentstack/app-sdk": "^2.3.2",
+    "@tanstack/react-query": "^4.36.1",
+    "buffer": "^6.0.3",
+    "jotai": "^1.8.3",
+    "lodash": "^4.17.21",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.30.3"
+  },
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "browserslist": {
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.186",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.0.21",
+    "@types/react-dom": "^18.0.5",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.14",
+    "dotenv": "^16.3.1",
+    "postcss": "^8.4.24",
+    "tailwindcss": "^3.3.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.0"
+  }
+}
