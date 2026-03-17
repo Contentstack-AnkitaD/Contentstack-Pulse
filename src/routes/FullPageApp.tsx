@@ -31,7 +31,7 @@ const FullPageApp: React.FC = () => {
   const handleGenerateInsights = useCallback(() => {
     if (!stackHealth) return;
     const flagged = stackHealth.entries.filter((e) => e.issues.length > 0);
-    generateInsights(flagged);
+    generateInsights(flagged, stackHealth.averageScore, stackHealth.totalEntries);
   }, [stackHealth, generateInsights]);
 
   return (

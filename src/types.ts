@@ -50,9 +50,10 @@ export interface GeminiInsight {
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   command?: string;
+  args?: string[];
   safe?: boolean;
   timestamp: number;
 }

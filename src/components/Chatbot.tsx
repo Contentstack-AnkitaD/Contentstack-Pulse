@@ -1,10 +1,13 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { useGeminiChat } from "../hooks/useGemini";
+import { ChatMessage } from "../types";
 
 const Chatbot: React.FC = () => {
-  const { messages, sendMessage, loading } = useGeminiChat();
+  const { messages, sendMessage, addMessage, loading } = useGeminiChat();
   const [input, setInput] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -12,11 +15,12 @@ const Chatbot: React.FC = () => {
     if (container) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [messages, loading]);
+  }, [messages, loading, executing]);
 
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || loading || executing) return;
+    setPendingConfirm(null);
     sendMessage(trimmed);
     setInput("");
   };
@@ -26,6 +30,149 @@ const Chatbot: React.FC = () => {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // Execute a CLI command via SSE streaming
+  const executeCommand = useCallback(
+    (args: string[]) => {
+      setExecuting(true);
+      setPendingConfirm(null);
+
+      addMessage({
+        id: `exec-start-${Date.now()}`,
+        role: "system",
+        content: `> csdx ${args.join(" ")}`,
+        timestamp: Date.now(),
+      });
+
+      const encoded = encodeURIComponent(JSON.stringify(args));
+      const source = new EventSource(`/api/execute?args=${encoded}`);
+
+      source.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+
+          if (data.done) {
+            source.close();
+            addMessage({
+              id: `exec-done-${Date.now()}`,
+              role: "system",
+              content:
+                data.exitCode === 0
+                  ? "Command completed successfully."
+                  : `Command exited with code ${data.exitCode}.`,
+              timestamp: Date.now(),
+            });
+            setExecuting(false);
+            return;
+          }
+
+          addMessage({
+            id: `exec-${Date.now()}-${Math.random()}`,
+            role: "system",
+            content: data.message,
+            timestamp: Date.now(),
+          });
+        } catch {
+          // ignore parse errors
+        }
+      };
+
+      source.onerror = () => {
+        source.close();
+        addMessage({
+          id: `exec-err-${Date.now()}`,
+          role: "system",
+          content: "Connection lost. Command may still be running on server.",
+          timestamp: Date.now(),
+        });
+        setExecuting(false);
+      };
+    },
+    [addMessage]
+  );
+
+  // Render a single message
+  const renderMessage = (msg: ChatMessage) => {
+    // System messages (CLI output) — terminal styling
+    if (msg.role === "system") {
+      return (
+        <div key={msg.id} className="self-start max-w-[90%]">
+          <div className="px-3 py-2 bg-gray-900 text-green-400 rounded-lg font-mono text-xs leading-relaxed break-all">
+            {msg.content}
+          </div>
+        </div>
+      );
+    }
+
+    const isUser = msg.role === "user";
+    const hasCommand = !!(msg.command && msg.args?.length);
+    const isSafe = msg.safe !== false;
+
+    return (
+      <div key={msg.id} className={`max-w-[85%] ${isUser ? "self-end" : "self-start"}`}>
+        <div
+          className={`px-3.5 py-2.5 rounded-xl text-sm leading-relaxed ${
+            isUser
+              ? "bg-pulse-primary text-white rounded-br-sm"
+              : "bg-gray-100 text-gray-800 rounded-bl-sm"
+          }`}
+        >
+          {msg.content.split("\n").map((line, i) => (
+            <React.Fragment key={i}>
+              {line.startsWith("Command: `") ? (
+                <code className="block mt-2 px-2.5 py-2 bg-gray-900 text-green-400 rounded-md font-mono text-xs break-all">
+                  {line.replace("Command: `", "").replace(/`$/, "")}
+                </code>
+              ) : line.startsWith("**Warning") ? (
+                <strong className="block mt-2 text-yellow-500 text-xs">
+                  {line.replace(/\*\*/g, "")}
+                </strong>
+              ) : (
+                <span>{line}</span>
+              )}
+              {i < msg.content.split("\n").length - 1 && <br />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Execute / Confirm buttons for command messages */}
+        {hasCommand && !executing && (
+          <div className="mt-2 flex gap-2">
+            {isSafe ? (
+              <button
+                className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors"
+                onClick={() => executeCommand(msg.args!)}
+              >
+                Execute
+              </button>
+            ) : pendingConfirm === msg.id ? (
+              <>
+                <button
+                  className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 transition-colors"
+                  onClick={() => executeCommand(msg.args!)}
+                >
+                  Confirm Execute
+                </button>
+                <button
+                  className="px-3 py-1.5 bg-gray-300 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-400 transition-colors"
+                  onClick={() => setPendingConfirm(null)}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                className="px-3 py-1.5 bg-yellow-500 text-white rounded-lg text-xs font-medium hover:bg-yellow-600 transition-colors"
+                onClick={() => setPendingConfirm(msg.id)}
+              >
+                Run (requires confirmation)
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -50,38 +197,8 @@ const Chatbot: React.FC = () => {
 
           {/* Messages */}
           <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`max-w-[85%] ${msg.role === "user" ? "self-end" : "self-start"}`}
-              >
-                <div
-                  className={`px-3.5 py-2.5 rounded-xl text-sm leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-pulse-primary text-white rounded-br-sm"
-                      : "bg-gray-100 text-gray-800 rounded-bl-sm"
-                  }`}
-                >
-                  {msg.content.split("\n").map((line, i) => (
-                    <React.Fragment key={i}>
-                      {line.startsWith("Command: `") ? (
-                        <code className="block mt-2 px-2.5 py-2 bg-gray-900 text-green-400 rounded-md font-mono text-xs break-all">
-                          {line.replace("Command: `", "").replace("`", "")}
-                        </code>
-                      ) : line.startsWith("**Warning") ? (
-                        <strong className="block mt-2 text-yellow-500 text-xs">
-                          {line.replace(/\*\*/g, "")}
-                        </strong>
-                      ) : (
-                        <span>{line}</span>
-                      )}
-                      {i < msg.content.split("\n").length - 1 && <br />}
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {loading && (
+            {messages.map(renderMessage)}
+            {(loading || executing) && (
               <div className="self-start">
                 <div className="flex gap-1 px-4 py-3 bg-gray-100 rounded-xl w-fit">
                   {[0, 1, 2].map((i) => (
@@ -105,12 +222,12 @@ const Chatbot: React.FC = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={loading}
+              disabled={loading || executing}
             />
             <button
               className="px-4 py-2 bg-pulse-primary text-white rounded-lg text-sm font-medium hover:bg-pulse-primary-dark transition-colors disabled:opacity-50"
               onClick={handleSend}
-              disabled={loading || !input.trim()}
+              disabled={loading || executing || !input.trim()}
             >
               Send
             </button>
