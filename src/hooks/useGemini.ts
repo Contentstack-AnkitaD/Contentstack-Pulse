@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useAppConfig } from "./useAppConfig";
-import { EntryHealth, GeminiInsight, ChatMessage } from "../types";
+import { ContentTypeHealth, EntryHealth, GeminiInsight, ChatMessage } from "../types";
 
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
@@ -33,7 +33,7 @@ export const useGeminiInsights = () => {
   const [error, setError] = useState<string | null>(null);
 
   const generateInsights = useCallback(
-    async (flaggedEntries: EntryHealth[]) => {
+    async (flaggedEntries: EntryHealth[], flaggedCTs?: ContentTypeHealth[]) => {
       const apiKey = config.gemini_api_key || import.meta.env.REACT_APP_GEMINI_API_KEY;
       if (!apiKey) {
         setError("Gemini API key not configured. Go to App Configuration to set it.");
@@ -45,7 +45,7 @@ export const useGeminiInsights = () => {
 
       try {
         // Send top 20 worst entries for analysis
-        const sample = flaggedEntries.slice(0, 20).map((e) => ({
+        const entrySample = flaggedEntries.slice(0, 20).map((e) => ({
           title: e.title,
           contentType: e.contentType,
           score: e.score,
@@ -53,15 +53,25 @@ export const useGeminiInsights = () => {
           lastUpdated: e.lastUpdated,
         }));
 
+        // Send top 30 worst CTs
+        const ctSample = (flaggedCTs || []).slice(0, 30).map((ct) => ({
+          title: ct.title,
+          uid: ct.uid,
+          entryCount: ct.entryCount,
+          score: ct.score,
+          issues: ct.issues.map((i) => ({ type: i.type, message: i.message, severity: i.severity })),
+        }));
+
         const prompt = `You are a content quality analyst for a CMS platform called Contentstack.
-Given these content entries with their health issues, provide a JSON response with:
-1. "summary": A plain English paragraph summarizing the top 3 health problems in this stack
-2. "priorities": An array of 3 strings listing issues in priority order for fixing
-3. "recommendations": An array of 3 strings with one-line fix recommendation per issue type
+Given these content type schema issues and entry-level health issues, provide a JSON response with:
+1. "summary": A plain English paragraph summarizing the top 3 health problems in this stack (mention empty content types, missing global fields, schema issues, and entry issues)
+2. "priorities": An array of 3-5 strings listing issues in priority order for fixing
+3. "recommendations": An array of 3-5 strings with one-line actionable fix recommendations
 
 Respond ONLY with valid JSON, no markdown code blocks.
 
-Entries: ${JSON.stringify(sample)}`;
+Content Type Issues: ${JSON.stringify(ctSample)}
+Entry Issues: ${JSON.stringify(entrySample)}`;
 
         const rawResponse = await callGemini(apiKey, prompt);
 

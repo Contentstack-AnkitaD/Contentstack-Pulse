@@ -34,6 +34,15 @@ export interface StackHealth {
   averageScore: number;
   entries: EntryHealth[];
   contentTypes: ContentTypeInfo[];
+  contentTypeHealth: ContentTypeHealth[];
+}
+
+export interface ContentTypeHealth {
+  uid: string;
+  title: string;
+  entryCount: number;
+  issues: HealthIssue[];
+  score: number;
 }
 
 export interface ContentTypeInfo {

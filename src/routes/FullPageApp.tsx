@@ -4,6 +4,7 @@ import { useGeminiInsights } from "../hooks/useGemini";
 import HealthScoreCard from "../components/HealthScoreCard";
 import AIInsightsPanel from "../components/AIInsightsPanel";
 import EntryTable from "../components/EntryTable";
+import ContentTypeTable from "../components/ContentTypeTable";
 import Chatbot from "../components/Chatbot";
 
 const FullPageApp: React.FC = () => {
@@ -31,8 +32,10 @@ const FullPageApp: React.FC = () => {
 
   const handleGenerateInsights = useCallback(() => {
     if (!stackHealth) return;
-    const flagged = stackHealth.entries.filter((e) => e.issues.length > 0);
-    generateInsights(flagged);
+    // Send both entry issues and CT issues to Gemini
+    const flaggedEntries = stackHealth.entries.filter((e) => e.issues.length > 0);
+    const flaggedCTs = stackHealth.contentTypeHealth.filter((ct) => ct.issues.length > 0);
+    generateInsights(flaggedEntries, flaggedCTs);
   }, [stackHealth, generateInsights]);
 
   return (
@@ -124,7 +127,10 @@ const FullPageApp: React.FC = () => {
               onGenerate={handleGenerateInsights}
             />
           </div>
-          <EntryTable entries={stackHealth.entries} onMarkReviewed={handleMarkReviewed} />
+          <ContentTypeTable contentTypes={stackHealth.contentTypeHealth} />
+          {stackHealth.entries.length > 0 && (
+            <EntryTable entries={stackHealth.entries} onMarkReviewed={handleMarkReviewed} />
+          )}
         </div>
       )}
 

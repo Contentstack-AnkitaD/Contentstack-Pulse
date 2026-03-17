@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { cmaFetch } from "./useCmaApi";
 import {
+  ContentTypeHealth,
   ContentTypeInfo,
   EntryHealth,
   HealthIssue,
@@ -82,6 +83,58 @@ function auditEntry(
   return issues;
 }
 
+/** Audit a content type schema for structural issues */
+function auditContentType(
+  ct: any,
+  globalFieldUids: Set<string>
+): HealthIssue[] {
+  const issues: HealthIssue[] = [];
+  const schema = ct.schema || [];
+
+  // Check for references to missing global fields
+  for (const field of schema) {
+    if (field.data_type === "global_field" && !globalFieldUids.has(field.reference_to)) {
+      issues.push({
+        type: "missing_global_field",
+        message: `References deleted global field "${field.reference_to}"`,
+        severity: Severity.CRITICAL,
+        field: field.uid,
+      });
+    }
+
+    // Check for groups/blocks with no fields
+    if (field.data_type === "group" && (!field.schema || field.schema.length === 0)) {
+      issues.push({
+        type: "empty_group",
+        message: `Group field "${field.display_name || field.uid}" has no sub-fields`,
+        severity: Severity.WARNING,
+        field: field.uid,
+      });
+    }
+
+    // Check modular blocks with no blocks defined
+    if (field.data_type === "blocks" && (!field.blocks || field.blocks.length === 0)) {
+      issues.push({
+        type: "empty_modular_blocks",
+        message: `Modular Blocks "${field.display_name || field.uid}" has no blocks defined`,
+        severity: Severity.WARNING,
+        field: field.uid,
+      });
+    }
+  }
+
+  // No fields besides title
+  if (schema.length <= 1) {
+    issues.push({
+      type: "minimal_schema",
+      message: "Content type has no custom fields (only title)",
+      severity: Severity.WARNING,
+    });
+  }
+
+  return issues;
+}
+
 function calculateScore(issues: HealthIssue[]): number {
   let score = 100;
   for (const issue of issues) {
@@ -102,36 +155,64 @@ export const useHealthAudit = () => {
     setProgress({ current: 0, total: 0, phase: "Fetching content types..." });
 
     try {
-      // 1. Fetch all content types via direct CMA
-      const ctData = await cmaFetch<{ content_types: any[] }>("/content_types", {
-        include_count: "true",
-      });
+      // 1. Fetch all content types (paginated)
+      let allRawCts: any[] = [];
+      let ctSkip = 0;
+      while (true) {
+        const ctData = await cmaFetch<{ content_types: any[]; count?: number }>("/content_types", {
+          include_count: "true",
+          limit: "100",
+          skip: String(ctSkip),
+        });
+        allRawCts = allRawCts.concat(ctData.content_types || []);
+        if ((ctData.content_types || []).length < 100) break;
+        ctSkip += 100;
+      }
 
-      const contentTypes: ContentTypeInfo[] = (ctData.content_types || []).map((ct: any) => ({
+      const contentTypes: ContentTypeInfo[] = allRawCts.map((ct: any) => ({
         uid: ct.uid,
         title: ct.title,
         schema: ct.schema || [],
       }));
 
-      setProgress({ current: 0, total: contentTypes.length, phase: "Auditing entries..." });
+      // 2. Fetch global fields to detect missing references
+      setProgress({ current: 0, total: contentTypes.length, phase: "Fetching global fields..." });
+      let globalFieldUids = new Set<string>();
+      try {
+        const gfData = await cmaFetch<{ global_fields: any[] }>("/global_fields", {
+          include_count: "true",
+        });
+        for (const gf of gfData.global_fields || []) {
+          globalFieldUids.add(gf.uid);
+        }
+      } catch (err) {
+        console.warn("[Pulse] Could not fetch global fields:", err);
+      }
 
+      // 3. Audit content type schemas + fetch entries
       const allEntries: EntryHealth[] = [];
+      const ctHealthList: ContentTypeHealth[] = [];
       let totalIssues = 0;
       let criticalCount = 0;
       let warningCount = 0;
 
-      // 2. For each content type, fetch all entries with pagination
       for (let i = 0; i < contentTypes.length; i++) {
         const ct = contentTypes[i];
+        const rawCt = allRawCts[i];
         setProgress({ current: i + 1, total: contentTypes.length, phase: `Auditing ${ct.title}...` });
 
+        // CT-level audit
+        const ctIssues = auditContentType(rawCt, globalFieldUids);
+
+        // Fetch entries for this CT
+        let entryCount = 0;
         try {
           let entries: any[] = [];
           let skip = 0;
           const limit = 100;
 
           while (true) {
-            const entryData = await cmaFetch<{ entries: any[] }>(
+            const entryData = await cmaFetch<{ entries: any[]; count?: number }>(
               `/content_types/${ct.uid}/entries`,
               { include_count: "true", limit: String(limit), skip: String(skip) }
             );
@@ -142,6 +223,8 @@ export const useHealthAudit = () => {
             if (batch.length < limit) break;
             skip += limit;
           }
+
+          entryCount = entries.length;
 
           for (const entry of entries) {
             const issues = auditEntry(entry, ct);
@@ -169,14 +252,45 @@ export const useHealthAudit = () => {
         } catch (err) {
           console.warn(`[Pulse] Failed to fetch entries for ${ct.title}:`, err);
         }
+
+        // Empty CT check
+        if (entryCount === 0) {
+          ctIssues.push({
+            type: "empty_content_type",
+            message: "No entries found — consider removing if unused",
+            severity: Severity.WARNING,
+          });
+        }
+
+        // Count CT-level issues toward totals
+        const ctCriticals = ctIssues.filter((i) => i.severity === Severity.CRITICAL).length;
+        const ctWarnings = ctIssues.filter((i) => i.severity === Severity.WARNING).length;
+        totalIssues += ctIssues.length;
+        criticalCount += ctCriticals;
+        warningCount += ctWarnings;
+
+        ctHealthList.push({
+          uid: ct.uid,
+          title: ct.title,
+          entryCount,
+          issues: ctIssues,
+          score: calculateScore(ctIssues),
+        });
       }
 
-      // Sort by score ascending (worst first)
+      // Sort entries by score ascending (worst first)
       allEntries.sort((a, b) => a.score - b.score);
+      // Sort CT health by score ascending
+      ctHealthList.sort((a, b) => a.score - b.score);
 
+      // Average score combines entry + CT health
+      const allScores = [
+        ...allEntries.map((e) => e.score),
+        ...ctHealthList.map((c) => c.score),
+      ];
       const averageScore =
-        allEntries.length > 0
-          ? Math.round(allEntries.reduce((sum, e) => sum + e.score, 0) / allEntries.length)
+        allScores.length > 0
+          ? Math.round(allScores.reduce((sum, s) => sum + s, 0) / allScores.length)
           : 100;
 
       const result: StackHealth = {
@@ -187,6 +301,7 @@ export const useHealthAudit = () => {
         averageScore,
         entries: allEntries,
         contentTypes,
+        contentTypeHealth: ctHealthList,
       };
 
       setStackHealth(result);
