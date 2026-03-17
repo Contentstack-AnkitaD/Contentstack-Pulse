@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useAppSdkApi } from "./useAppSdkApi";
+import { useAppSdk } from "./useAppSdk";
 import {
   ContentTypeInfo,
   EntryHealth,
@@ -91,26 +91,28 @@ function calculateScore(issues: HealthIssue[]): number {
 }
 
 export const useHealthAudit = () => {
-  const { apiCall, isReady } = useAppSdkApi();
+  const [appSdk] = useAppSdk();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, phase: "" });
   const [stackHealth, setStackHealth] = useState<StackHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const runAudit = useCallback(async () => {
-    if (!isReady) return;
+    if (!appSdk) return;
 
     setLoading(true);
     setError(null);
     setProgress({ current: 0, total: 0, phase: "Fetching content types..." });
 
     try {
-      // 1. Fetch all content types
-      const ctResponse = await apiCall<{ content_types: any[] }>("/v3/content_types", {
-        params: { include_count: "true" },
-      });
+      const stack = appSdk.stack;
 
-      const contentTypes: ContentTypeInfo[] = ctResponse.data.content_types.map((ct: any) => ({
+      // 1. Fetch all content types using SDK's built-in method
+      // stack.getContentTypes() -> Promise<{ content_types: [...] }>
+      const ctResult: any = await stack.getContentTypes();
+      const rawContentTypes = ctResult.content_types || [];
+
+      const contentTypes: ContentTypeInfo[] = rawContentTypes.map((ct: any) => ({
         uid: ct.uid,
         title: ct.title,
         schema: ct.schema || [],
@@ -129,14 +131,28 @@ export const useHealthAudit = () => {
         setProgress({ current: i + 1, total: contentTypes.length, phase: `Auditing ${ct.title}...` });
 
         try {
-          const entriesResponse = await apiCall<{ entries: any[] }>(
-            `/v3/content_types/${ct.uid}/entries`,
-            {
-              params: { include_count: "true", limit: "100" },
-            }
-          );
+          // Paginate through all entries using SDK Query
+          // Pattern: stack.ContentType('uid').Entry.Query().limit(n).skip(n).find()
+          let entries: any[] = [];
+          let skip = 0;
+          const limit = 100;
 
-          const entries = entriesResponse.data.entries || [];
+          while (true) {
+            const entryResult: any = await stack
+              .ContentType(ct.uid)
+              .Entry
+              .Query()
+              .limit(limit)
+              .skip(skip)
+              .find();
+
+            const batch = entryResult.entries || entryResult.entry || [];
+            const batchArray = Array.isArray(batch) ? batch : [batch];
+            entries = entries.concat(batchArray);
+
+            if (batchArray.length < limit) break;
+            skip += limit;
+          }
 
           for (const entry of entries) {
             const issues = auditEntry(entry, ct);
@@ -192,7 +208,7 @@ export const useHealthAudit = () => {
     } finally {
       setLoading(false);
     }
-  }, [apiCall, isReady]);
+  }, [appSdk]);
 
   return { runAudit, loading, progress, stackHealth, error, setStackHealth };
 };
